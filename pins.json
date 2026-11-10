@@ -1,0 +1,35 @@
+{
+  "uv": {
+    "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-pc-windows-msvc.zip",
+    "sha256": "a38b8d1902b7cfbc76b423ba1bb456f623f42064cdc72628b6075b89afd1019a",
+    "version": "0.13.5"
+  },
+  "comfyui": {
+    "url": "https://codeload.github.com/Comfy-Org/ComfyUI/zip/2c75dc1b379a59e0880619d029607af5169a62ef",
+    "sha256": "1fec46fc59ab42aaf06d507ce75b9c5bee8e7d17eb4c3bb35079295a6c386cda",
+    "version": "v0.44.0"
+  },
+  "torch": {
+    "rocm": {
+      "python": "3.13.9",
+      "index": "https://stable.repo.amd.com/rocm/whl-next/",
+      "torch": "2.13.0+rocm10.0.0",
+      "torchvision": "0.28.0+rocm10.0.0",
+      "torchaudio": "2.11.0.2+rocm10.0.0"
+    },
+    "cu130": {
+      "python": "3.13.9",
+      "index": "https://download.pytorch.org/whl/cu130",
+      "torch": "2.14.1+cu130",
+      "torchvision": "0.29.1+cu130",
+      "torchaudio": "2.11.0+cu130"
+    },
+    "cu124": {
+      "python": "3.12.10",
+      "index": "https://download.pytorch.org/whl/cu124",
+      "torch": "2.6.0+cu124",
+      "torchvision": "0.21.0+cu124",
+      "torchaudio": "2.6.0+cu124"
+    }
+  }
+}
