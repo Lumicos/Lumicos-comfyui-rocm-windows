@@ -6,8 +6,9 @@ try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{}
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
 $kit=$PSScriptRoot
 $pins=Get-Content -LiteralPath (Join-Path $kit 'pins.json') -Raw | ConvertFrom-Json
-function Say($text,$color='Gray'){Write-Host $text -ForegroundColor $color}
-function Fail($text){Say "`n[หยุด] $text" Red;exit 1}
+. (Join-Path $kit 'src\common.ps1')
+trap{Say "`n[หยุด] $($_.Exception.Message)" Red;exit 1}
+$script:RetryHint="`nรันตัวติดตั้งซ้ำด้วยโฟลเดอร์เดิมเพื่อทำต่อจากจุดที่ค้าง"
 
 Say "ComfyUI Installer for Windows (AMD ROCm / NVIDIA CUDA) - ComfyUI $($pins.comfyui.version)" Cyan
 
@@ -70,7 +71,11 @@ New-Item -ItemType Directory -Force -Path $Root | Out-Null
 $state=if(Test-Path -LiteralPath $marker){Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json}else{$null}
 if($state -and $state.kind -ne $kind){Fail 'โฟลเดอร์นี้เคยติดตั้งสำหรับการ์ดอีกแบบ ใช้โฟลเดอร์ใหม่'}
 $done=@{};if($state){foreach($s in $state.done){$done[$s]=$true}}
-function Save-State($extra){$o=[ordered]@{kind=$kind;target=$target;gpu=$gpu.name;comfyui=$pins.comfyui.version;torch=$t.torch;done=@($done.Keys)};if($extra){foreach($k in $extra.Keys){$o[$k]=$extra[$k]}};[IO.File]::WriteAllText($marker,($o|ConvertTo-Json),(New-Object Text.UTF8Encoding $false))}
+# Re-running on an existing install only fills in missing steps; it never swaps ComfyUI or PyTorch (Update ComfyUI.cmd does, with a backup).
+$comfyVer=if($done['comfyui'] -and $state.comfyui){$state.comfyui}else{$pins.comfyui.version}
+$torchVer=if($done['torch'] -and $state.torch){$state.torch}else{$t.torch}
+$keep=[ordered]@{};if($state){foreach($k in 'device','low','finishedAt','updatedAt'){if($state.$k -ne $null){$keep[$k]=$state.$k}}}
+function Save-State($extra){$o=[ordered]@{kind=$kind;target=$target;gpu=$gpu.name;comfyui=$comfyVer;torch=$torchVer;done=@($done.Keys)};foreach($k in $keep.Keys){$o[$k]=$keep[$k]};if($extra){foreach($k in $extra.Keys){$o[$k]=$extra[$k]}};Save-Json $marker $o}
 function Step($name,$label,[scriptblock]$body){if($done[$name]){Say "ข้าม (ทำแล้ว): $label" DarkGray;return};Say "`n== $label" Cyan;& $body;$done[$name]=$true;Save-State}
 function Get-Pinned($item,$file){
  if(Test-Path -LiteralPath $file){if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -eq $item.sha256){return};Remove-Item -LiteralPath $file -Force}
@@ -87,55 +92,37 @@ function Unzip-Flat($zip,$dest,$expect){
  Get-ChildItem -LiteralPath $inner -Force | ForEach-Object {Move-Item -LiteralPath $_.FullName -Destination $dest -Force}
  Remove-Item -LiteralPath $tmp -Recurse -Force
 }
-function Exe($file,[string[]]$arguments){& $file @arguments;if($LASTEXITCODE -ne 0){Fail ("คำสั่งล้มเหลว ({0}): {1} {2}`nรันตัวติดตั้งซ้ำด้วยโฟลเดอร์เดิมเพื่อทำต่อจากจุดที่ค้าง" -f $LASTEXITCODE,(Split-Path $file -Leaf),($arguments -join ' '))}}
 
 $dl=Join-Path $Root '.downloads';New-Item -ItemType Directory -Force -Path $dl | Out-Null
 $uv=Join-Path $Root 'runtime\uv\uv.exe'
 $comfy=Join-Path $Root 'ComfyUI'
 $py=Join-Path $comfy '.venv\Scripts\python.exe'
-# Everything uv touches stays inside the install folder: delete the folder = uninstall.
-$env:UV_PYTHON_INSTALL_DIR=Join-Path $Root 'runtime\python'
-$env:UV_CACHE_DIR=Join-Path $Root '.uv-cache'
-$env:UV_LINK_MODE='copy'
-$env:UV_HTTP_TIMEOUT='600'
+Use-RootEnv $Root
 
 Step 'uv' 'ดาวน์โหลด uv (ตัวจัดการ Python)' {Get-Pinned $pins.uv (Join-Path $dl 'uv.zip');Unzip-Flat (Join-Path $dl 'uv.zip') (Join-Path $Root 'runtime\uv') 'uv.exe'}
-Step 'comfyui' "ดาวน์โหลด ComfyUI $($pins.comfyui.version)" {Get-Pinned $pins.comfyui (Join-Path $dl 'comfyui.zip');Unzip-Flat (Join-Path $dl 'comfyui.zip') $comfy 'main.py'}
+Step 'comfyui' "ดาวน์โหลด ComfyUI $($pins.comfyui.version)" {Get-ComfyUISource $uv $t.python $comfy}
 Step 'python' "สร้าง Python $($t.python) ของ ComfyUI" {if(-not (Test-Path -LiteralPath $py)){Exe $uv @('venv','--python',$t.python,'--seed',(Join-Path $comfy '.venv'))}}
 $constraints=Join-Path $Root 'torch-pins.txt'
-[IO.File]::WriteAllText($constraints,("torch=={0}`ntorchvision=={1}`ntorchaudio=={2}`n" -f $t.torch,$t.torchvision,$t.torchaudio))
-Step 'torch' "ติดตั้ง PyTorch $($t.torch) (ไฟล์ใหญ่หลาย GB ใช้เวลาสักพัก)" {
- $extra=if($target){"[device-$target]"}else{''}
- Exe $uv @('pip','install','--python',$py,'--index-url',$t.index,"torch$extra==$($t.torch)","torchvision$extra==$($t.torchvision)","torchaudio==$($t.torchaudio)")
-}
-Step 'requirements' 'ติดตั้งแพ็กเกจของ ComfyUI + ComfyUI-Manager' {
- $req=@('-r',(Join-Path $comfy 'requirements.txt'))
- if(Test-Path -LiteralPath (Join-Path $comfy 'manager_requirements.txt')){$req+=@('-r',(Join-Path $comfy 'manager_requirements.txt'))}
- Exe $uv (@('pip','install','--python',$py,'-c',$constraints)+$req)
-}
+if(-not $done['torch']){Write-TorchPins $constraints $t}
+Step 'torch' "ติดตั้ง PyTorch $($t.torch) (ไฟล์ใหญ่หลาย GB ใช้เวลาสักพัก)" {Install-Torch $uv $py $t $target}
+Step 'requirements' 'ติดตั้งแพ็กเกจของ ComfyUI + ComfyUI-Manager' {Install-Requirements $uv $py $comfy $constraints}
+Step 'pygit2' 'ติดตั้ง pygit2 ให้ ComfyUI-Manager ใช้งานได้โดยไม่ต้องลง Git' {Install-ManagerGit $uv $py $constraints}
 
-# 4) GPU check: PyTorch must see the chosen card and run on it.
+# 4) GPU check
 Say "`n== ทดสอบการ์ดจอกับ PyTorch" Cyan
-$names=& $py -c "import torch,json;print(json.dumps([torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]))"
-if($LASTEXITCODE -ne 0 -or -not $names){Fail 'PyTorch โหลดไม่ขึ้น ดูข้อความด้านบน'}
-$list=@($names | Select-Object -Last 1 | ConvertFrom-Json)
-if(-not $list.Count){Fail $(if($kind -eq 'rocm'){'PyTorch มองไม่เห็นการ์ด AMD: อัปเดตไดรเวอร์ AMD Adrenalin เป็นรุ่นล่าสุดแล้วรันตัวติดตั้งซ้ำ'}else{'PyTorch มองไม่เห็นการ์ด NVIDIA: อัปเดตไดรเวอร์แล้วรันซ้ำ'})}
-function Clean($s){($s.ToLower() -replace '[^a-z0-9]','') -replace 'advancedmicrodevices|nvidia|amd|graphics|geforce',''}
-$hit=@();for($i=0;$i -lt $list.Count;$i++){if((Clean $list[$i]) -eq (Clean $gpu.name)){$hit+=$i}}
-$dev=if($hit.Count -eq 1){$hit[0]}elseif($list.Count -eq 1){0}else{Fail ('มีการ์ดหลายใบและจับคู่ไม่ได้: ' + ($list -join ', '))}
-$visible=if($kind -eq 'rocm'){'HIP_VISIBLE_DEVICES'}else{'CUDA_VISIBLE_DEVICES'}
-Set-Item -Path "env:$visible" -Value ([string]$dev)
-Exe $py @('-c','import torch;assert torch.cuda.is_available();x=torch.randn(512,512,device=''cuda'');print(''GPU OK:'',torch.cuda.get_device_name(0),float((x@x).sum().cpu())!=0)')
+$dev=Test-Gpu $py $kind $gpu.name
+$visible=Get-VisibleVar $kind
 
 # 5) Launchers
 $flags='--enable-manager --auto-launch'+$(if($low){' --lowvram'}else{''})
-$run="@echo off`r`ntitle ComfyUI`r`ncd /d ""%~dp0ComfyUI""`r`nset $visible=$dev`r`n"".venv\Scripts\python.exe"" main.py $flags %*`r`npause`r`n"
+$run="@echo off`r`ntitle ComfyUI`r`ncd /d ""%~dp0ComfyUI""`r`nset $visible=$dev`r`nset CM_USE_PYGIT2=1`r`n"".venv\Scripts\python.exe"" main.py $flags %*`r`npause`r`n"
 [IO.File]::WriteAllText((Join-Path $Root 'Run ComfyUI.cmd'),$run,(New-Object Text.ASCIIEncoding))
-$lan="@echo off`r`ntitle ComfyUI (LAN)`r`ncd /d ""%~dp0ComfyUI""`r`nset $visible=$dev`r`n"".venv\Scripts\python.exe"" main.py $flags --listen 0.0.0.0 %*`r`npause`r`n"
+$lan="@echo off`r`ntitle ComfyUI (LAN)`r`ncd /d ""%~dp0ComfyUI""`r`nset $visible=$dev`r`nset CM_USE_PYGIT2=1`r`n"".venv\Scripts\python.exe"" main.py $flags --listen 0.0.0.0 %*`r`npause`r`n"
 [IO.File]::WriteAllText((Join-Path $Root 'Run ComfyUI (LAN).cmd'),$lan,(New-Object Text.ASCIIEncoding))
-Save-State @{device=$dev;finishedAt=[DateTime]::Now.ToString('s')}
+Save-State @{device=$dev;low=[bool]$low;finishedAt=[DateTime]::Now.ToString('s')}
 
 Say "`nติดตั้งเสร็จแล้ว" Green
+if($comfyVer -ne $pins.comfyui.version){Say "เครื่องนี้ยังใช้ ComfyUI $comfyVer อยู่ ถ้าจะอัปเดตเป็น $($pins.comfyui.version) ให้ดับเบิลคลิก Update ComfyUI.cmd (สำรองตัวเก่าไว้ให้)" Yellow}
 Say "เปิดใช้งาน: ดับเบิลคลิก $Root\Run ComfyUI.cmd (เบราว์เซอร์จะเปิด http://127.0.0.1:8188 เอง)"
 Say "ใส่โมเดล: $comfy\models\  (checkpoints, diffusion_models, text_encoders, vae, loras ...)"
 Say "ถอนการติดตั้ง: ลบโฟลเดอร์ $Root ทิ้งทั้งโฟลเดอร์ ไม่มีอะไรติดตั้งลงระบบ"

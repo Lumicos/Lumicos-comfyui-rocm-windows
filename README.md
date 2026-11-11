@@ -30,13 +30,29 @@
 - การ์ดที่ยังไม่รองรับ เช่น RX 5000 / RX 500 / Intel Arc ตัวติดตั้งจะหยุดและบอกเหตุผล ไม่ติดตั้งครึ่ง ๆ กลาง ๆ
 
 ## ได้อะไรบ้าง
-- ComfyUI **v0.44.0** (รุ่นทางการ ล็อก checksum ไว้)
-- ComfyUI-Manager (เปิดด้วย `--enable-manager`) ใช้ลง custom nodes ได้จากในหน้า ComfyUI
+- ComfyUI **v0.45.2** (รุ่นทางการ ล็อก git commit ไว้ ถ้าไม่ตรงจะไม่ยอมติดตั้ง)
+- ComfyUI-Manager (เปิดด้วย `--enable-manager`) ใช้ลง custom nodes ได้จากในหน้า ComfyUI **ไม่ต้องลง Git** (ใช้ pygit2 แทน)
 - Python แยกของตัวเอง ทุกอย่างอยู่ในโฟลเดอร์เดียว ไม่แตะ Python หรือไฟล์ระบบของเครื่อง
 - `Run ComfyUI.cmd` สำหรับเปิดในเครื่อง และ `Run ComfyUI (LAN).cmd` สำหรับเปิดจากมือถือหรือคอมเครื่องอื่นในบ้าน
-- ทุกไฟล์ที่ดาวน์โหลดตรวจ SHA-256 ก่อนใช้ ส่วน PyTorch ดึงจาก repo ทางการของ AMD / PyTorch เท่านั้น
+- ไฟล์ที่ดาวน์โหลดตรวจ SHA-256 ก่อนใช้ (ส่วน ComfyUI ตรวจด้วย git commit) ส่วน PyTorch ดึงจาก repo ทางการของ AMD / PyTorch เท่านั้น
 
 **โมเดลไม่ได้รวมมาให้** ให้ดาวน์โหลดเองแล้ววางตามโฟลเดอร์ `C:\ComfyUI\ComfyUI\models\` (`checkpoints`, `diffusion_models`, `text_encoders`, `vae`, `loras` …) หรือหาผ่าน Manager ก็ได้
+
+## หน้า Manager ไม่ขึ้น (ติดตั้งไว้ก่อนหน้านี้)
+ตัวติดตั้งรุ่นก่อนไม่ได้ลง pygit2 ไว้ ถ้าเครื่องไม่มี Git หน้า Manager จะโหลดไม่ขึ้น วิธีแก้เลือกอย่างใดอย่างหนึ่ง
+- รัน `Install ComfyUI.cmd` ซ้ำ แล้วเลือกโฟลเดอร์เดิม (ได้ Manager ส่วน ComfyUI ยังเป็นรุ่นเดิม) หรือ
+- รัน `Update ComfyUI.cmd` (ได้ทั้ง Manager และ ComfyUI รุ่นใหม่)
+
+ถ้าเปิดผ่าน `Run ComfyUI (LAN).cmd` ตัว Manager จะไม่ยอมให้ลง custom node ซึ่งเป็นกฎความปลอดภัยของ Manager เอง ให้ลงผ่าน `Run ComfyUI.cmd` แทน
+
+## อัปเดต ComfyUI (สำรองตัวเก่าไว้ให้)
+1. ดาวน์โหลดตัวติดตั้งชุดใหม่ (Code → Download ZIP) แล้วแตกไฟล์
+2. ปิด ComfyUI ก่อน แล้วดับเบิลคลิก `Update ComfyUI.cmd` → เลือกโฟลเดอร์เดิม → พิมพ์ `Y`
+3. ตัวอัปเดตจะติดตั้งตัวใหม่แยกไว้ แล้วทดสอบการ์ดจอให้ผ่านก่อน จึงค่อยสลับไปใช้ ถ้าไม่ผ่าน ตัวเดิมยังใช้ได้เหมือนเดิม
+4. ตัวเก่า (โค้ด, Python, custom_nodes) เก็บไว้ที่ `C:\ComfyUI\backups\ComfyUI-<รุ่น>-<วันเวลา>` ส่วน `models`, `input`, `output`, `user` (settings, workflows) ย้ายมาใช้กับตัวใหม่ ไม่คัดลอกซ้ำ
+5. ถ้าตัวใหม่มีปัญหา ดับเบิลคลิก `Restore ComfyUI.cmd` เพื่อกลับไปใช้ตัวเก่า ตัวที่ถอดออกจะเก็บไว้ใน `backups` ด้วย จึงสลับไปกลับได้
+
+ตัวสำรองแต่ละชุดกินพื้นที่หลาย GB ใช้ตัวใหม่จนมั่นใจแล้วลบโฟลเดอร์ใน `backups` ทิ้งได้เลย
 
 **ถอนการติดตั้ง:** ลบโฟลเดอร์ `C:\ComfyUI` ทิ้งทั้งโฟลเดอร์ได้เลย
 
@@ -51,7 +67,8 @@ One-click installer for ComfyUI on Windows with **AMD Radeon via PyTorch ROCm** 
 
 - AMD RX 6600–6950, 7600–7900, 9060/9070 and AI PRO R9700 → `torch 2.13.0+rocm10.0.0` with the matching `gfx` device wheel from `stable.repo.amd.com`.
 - NVIDIA with a CUDA 13 driver → `torch 2.14.1+cu130`. Older cards or drivers → `torch 2.6.0+cu124`.
-- ComfyUI v0.44.0 plus the built-in ComfyUI-Manager. Every download is SHA-256 pinned. Everything stays in one folder: delete the folder to uninstall.
+- ComfyUI v0.45.2 (pinned by git commit, fetched with pygit2) plus the built-in ComfyUI-Manager, which uses pygit2 so Git does not need to be installed. Other downloads are SHA-256 pinned.
+- `Update ComfyUI.cmd` builds the new version beside the old one, GPU-tests it, then swaps it in and keeps the old code, Python env and custom_nodes under `backups\`. `Restore ComfyUI.cmd` swaps back. Everything stays in one folder: delete the folder to uninstall.
 - Re-run the installer on the same folder to resume after a failure. `Detect Only.cmd` shows the plan without installing.
 - Tested end to end on an RTX 5060 Ti. The ROCm package set is the one the author ran daily on an RX 6600, but this installer has not yet run on an AMD card. Reports are welcome in Issues.
 
