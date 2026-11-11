@@ -5,9 +5,9 @@
     "version": "0.13.5"
   },
   "comfyui": {
-    "url": "https://codeload.github.com/Comfy-Org/ComfyUI/zip/2c75dc1b379a59e0880619d029607af5169a62ef",
-    "sha256": "1fec46fc59ab42aaf06d507ce75b9c5bee8e7d17eb4c3bb35079295a6c386cda",
-    "version": "v0.44.0"
+    "repo": "https://github.com/Comfy-Org/ComfyUI.git",
+    "version": "v0.45.2",
+    "commit": "6e8488ef986067631e9c86e2a14360644b105663"
   },
   "torch": {
     "rocm": {
@@ -31,5 +31,6 @@
       "torchvision": "0.21.0+cu124",
       "torchaudio": "2.6.0+cu124"
     }
-  }
+  },
+  "pygit2": "1.21.0"
 }
